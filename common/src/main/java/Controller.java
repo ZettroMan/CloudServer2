@@ -1,3 +1,4 @@
+import com.sun.javaws.IconUtil;
 import javafx.event.ActionEvent;
 import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
@@ -7,6 +8,7 @@ import javafx.scene.control.TextField;
 import java.io.*;
 import java.net.Socket;
 import java.net.URL;
+import java.nio.ByteBuffer;
 import java.util.ResourceBundle;
 
 public class Controller implements Initializable {
@@ -28,7 +30,12 @@ public class Controller implements Initializable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        refreshFileList();
+    }
+
+    public void refreshFileList() {
         File dir = new File(clientFilesPath);
+        lv.getItems().clear();
         for (String file : dir.list()) {
             lv.getItems().add(file);
         }
@@ -38,38 +45,53 @@ public class Controller implements Initializable {
     // ./upload fileName
     public void sendCommand(ActionEvent actionEvent) {
         String command = txt.getText();
-        String [] op = command.split(" ");
-        if (op[0].equals("./download")) {
-            try {
-                os.writeUTF(op[0]);
-                os.writeUTF(op[1]);
-                String response = is.readUTF();
-                System.out.println("resp: " + response);
-                if (response.equals("OK")) {
-                    File file = new File(clientFilesPath + "/" + op[1]);
-                    if (!file.exists()) {
-                        file.createNewFile();
-                    }
-                    long len = is.readLong();
-                    byte [] buffer = new byte[1024];
-                    try(FileOutputStream fos = new FileOutputStream(file)) {
-                        if (len < 1024) {
-                            int count = is.read(buffer);
-                            fos.write(buffer, 0, count);
-                        } else {
-                            for (long i = 0; i < len / 1024; i++) {
+        String[] op = command.split(" ", 2);
+        byte response;
+        try {
+            if (op[0].equals("./download")) {
+                os.writeInt(0);
+                os.writeInt(op[1].getBytes().length);
+                os.write(op[1].getBytes());
+                response = is.readByte();
+                System.out.println("response: " + response);
+                if (response == 0) {
+                    try {
+                        long fileSize = is.readLong();
+                        long bytesRest = fileSize;
+                        //long fileSize = 0L;
+                        System.out.println("File length is : " + fileSize);
+                        File file = new File(clientFilesPath + "/" + op[1]);
+                        if (!file.exists()) {
+                            file.createNewFile();
+                        }
+                        byte[] buffer = new byte[1024];
+                        try (FileOutputStream fos = new FileOutputStream(file)) {
+                            while (bytesRest > 0L) {
                                 int count = is.read(buffer);
                                 fos.write(buffer, 0, count);
+                                bytesRest -= count;
+                                System.out.println("Bytes rest : " + bytesRest);
                             }
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
+                        System.out.println("Total bytes received : " + fileSize);
+                        //lv.getItems().add(op[1]);
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
-                    lv.getItems().add(op[1]);
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
+            } else if (op[0].equals("./upload")) {
+                // TODO: 7/23/2020 upload
+            } else {
+                //os.write(1);
+                // os.write(("Command: " + txt.getText()).getBytes().length);
+                os.writeInt(999);
+                os.write(("Command: " + txt.getText()).getBytes());
             }
-        } else {
-            // TODO: 7/23/2020 upload
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+        refreshFileList();
     }
 }
